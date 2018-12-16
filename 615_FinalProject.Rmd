@@ -27,16 +27,17 @@ library(lme4)
 library(ggpubr)
 library(benford.analysis)
 library(BenfordTests)
-air <- read.csv("air.csv")
-airbnb_se <- air %>% dplyr::filter(state == "WA")
-airbnb_se$Area <- rep("Seattle",nrow(airbnb_se))
-sea <- read.csv("sea.csv")
-se <- sea %>% dplyr::filter(state == "WA")
-nei <- data.frame(se$neighbourhood_group_cleansed)
-airbnb_se$market <-NULL
-airbnb_se <- cbind(airbnb_se,nei)
-colnames(airbnb_se)[colnames(airbnb_se)=="se.neighbourhood_group_cleansed"] <- "neighbourhood"
-airbnb_se_m <- airbnb_se %>% filter(price > 0 & price <= 1000) 
+#air <- read.csv("air.csv")
+#airbnb_se <- air %>% dplyr::filter(state == "WA")
+#airbnb_se$Area <- rep("Seattle",nrow(airbnb_se))
+#sea <- read.csv("sea.csv")
+#se <- sea %>% dplyr::filter(state == "WA")
+#nei <- data.frame(se$neighbourhood_group_cleansed)
+#airbnb_se$market <-NULL
+#airbnb_se <- cbind(airbnb_se,nei)
+#colnames(airbnb_se)[colnames(airbnb_se)=="se.neighbourhood_group_cleansed"] <- "neighbourhood"
+#airbnb_se_m <- airbnb_se %>% filter(price > 0 & price <= 1000) 
+airbnb_se_m <- read.csv("sea_airbnb.csv")
 ```
 
 ##1. Abstract
