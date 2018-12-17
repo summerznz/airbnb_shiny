@@ -13,6 +13,7 @@ library(scales)
 library(datetime)
 library(lubridate)
 library(ggplot2)
+library(knitr)
 library(reshape)
 library(zoo)
 library(sp)
@@ -25,6 +26,7 @@ library(tidyverse)
 library(plotly)
 library(benford.analysis)
 library('shinyjs')
+library(DT)
 airbnb_se_1 <- sea %>% filter(price > 0 & price <= 1000) %>% filter(bedrooms < 15) %>% filter(bathrooms < 15) %>% filter(accommodates < 20)
 
 #####
@@ -160,14 +162,14 @@ ui <- dashboardPage(
   dashboardSidebar(
     width = 300,
     sidebarMenu(
-      menuItem("About & Methodology", tabName = "about", icon = icon("info"), selected=TRUE),
+      menuItem("About", tabName = "about", icon = icon("info"), selected=TRUE),
       menuItem("Data Exploration", tabName = "data", icon = icon("database")),
       menuItem("Price Distribution", tabName = "price", icon=icon("line-chart")),
-      menuItem("Geographic", tabName = "geo", icon = icon("th")),
       menuItem("Neighborhood in Seattle", tabName = "geo1", icon = icon("th")),
-      menuItem("Features", tabName = "feature", icon=icon("line-chart")),
+      menuItem("Features", tabName = "feature", icon=icon("area-chart")),
       menuSubItem("Bedroom", tabName = "bed", icon = icon("angle-right")),
-      menuSubItem("Accommodates", tabName = "acc", icon = icon("angle-right"))
+      menuSubItem("Accommodates", tabName = "acc", icon = icon("angle-right")),
+      menuSubItem("Room Type", tabName = "room", icon = icon("angle-right"))
     )
   ),
   dashboardBody(
@@ -190,7 +192,7 @@ ui <- dashboardPage(
                   width = 12, 
                   solidHeader = TRUE, 
                   collapsible  = TRUE,
-                  print("In this project, I will use benford's law to analysis the distribution of Airbnb listings' price in Seattle.  ")
+                  print("In this project, I will use benford's law to analysis the distribution of Airbnb listings' price in Seattle and perform an exploratory data analysis figure out other features that are relevant to the rental price of Airbnb.  ")
                   )
                 )),
       # First tab content
@@ -222,21 +224,22 @@ ui <- dashboardPage(
               )
       ),
       
-      # Second tab content
-      tabItem(tabName = "geo",
+      tabItem(tabName = "data",
               fluidRow(width = 20,
-                box(width = NULL,
-                  leafletOutput("plot2", height="500px"),
-                  side = "right", collapsible = TRUE,
-                  title = "Mapping", solidHeader = TRUE)
+                       box(width = NULL, 
+                           dataTableOutput("stat"), 
+                           collapsible = TRUE,
+                           h2(""),
+                           dataTableOutput("stat1"),
+                           title = "Data", solidHeader = TRUE)
               )
-              
       ),
+      
       
       tabItem(tabName = "geo1",
               fluidRow(width = 20,
                        box(width = NULL, solidHeader = TRUE,
-                           selectizeInput("nei",label = "Neighbourhood:",
+                           selectizeInput("nei",label = "Choose the Neighbourhood:",
                                           choices = airbnb_se_1$neighbourhood,
                                           multiple=F,selected="Downtown")
                        ),
@@ -253,7 +256,9 @@ ui <- dashboardPage(
                        box(width = NULL,
                            plotOutput("plot3", height="500px"),
                            side = "right", collapsible = TRUE,
-                           title = "Bedroon ~ Price", solidHeader = TRUE)
+                           title = "Bedroon ~ Price", solidHeader = TRUE,
+                           h2(""),
+                           print("Number of bedrooms will always be a major factor to the rental price of Airbnb. The barplot shows the average prices over different number of bedroom. In this case, we can see from Figure 2 that there is a certain relationship between the average price of Airbnb listings and number of bedrooms. "))
               )
               
       ),
@@ -264,7 +269,60 @@ ui <- dashboardPage(
                        box(width = NULL,
                            plotOutput("plot4", height="500px"),
                            side = "right", collapsible = TRUE,
-                           title = "Accommodates ~ Price", solidHeader = TRUE)
+                           title = "Accommodates ~ Price", solidHeader = TRUE,
+                           h2(''),
+                           print("We can see thatnumber of accommodates have a certain effect on the rental price of Airbnb listings. "))
+              )
+              
+      ),
+      
+      tabItem(tabName = "room",
+              
+              fluidRow(
+                box(
+                  title = "Room Type ~ Price", 
+                  width = 12, 
+                  solidHeader = TRUE, 
+                  collapsed = F,
+                  print("In Airbnb listings, there are three types of room: Entire home/apt, Shared room and Private room. Room type is also a major factor of the price. Figure 4 shows the proportion of each of these three room type and we can see that there are nearly 74% of rooms are 'Entire Room/Apt'. Further, Figure 5 below shows that 'Entire room/apt' have a higher average price than 'Shared room' and 'Private room'. ")
+                )
+              ),
+              
+              fluidRow(
+                box(
+                  title = "Observation 1", 
+                  width = 12, 
+                  solidHeader = TRUE, 
+                  collapsible  = TRUE,
+                  collapsed = F,
+                  h4(""),
+                  h2(""),
+                  plotlyOutput("pie")
+                )
+              ),
+              
+              fluidRow(
+                box(
+                  title = "Observation 2", 
+                  width = 12, 
+                  solidHeader = TRUE, 
+                  collapsible  = TRUE,
+                  collapsed = T,
+                  h4(""),
+                  plotOutput("heat")
+                )
+              ),
+              
+              fluidRow(
+                box(
+                  title = "Observation 3", 
+                  width = 12, 
+                  solidHeader = TRUE, 
+                  collapsible  = TRUE,
+                  collapsed = T,
+                  h4(""),
+                  plotOutput("bar")
+                )
               )
               
       )
@@ -295,23 +353,16 @@ server <- function(input, output,session) {
     plot(bf) 
   })
   
-  
-  output$plot2 <- renderLeaflet({
-    airbnb_se_map <- sea %>% filter(price > 0 & price <= 1000)
-    pal <- colorNumeric(
-      palette = "RdPu",
-      domain = airbnb_se_map$price
-    )
-    leaflet(airbnb_se_map) %>% addTiles() %>%
-      addCircles(lng = ~longitude, lat = ~latitude, weight = 1,
-                 popup = ~price, radius = 40, 
-                 color = ~pal(price), fillOpacity = 1) %>%
-      addLegend("bottomright", pal = pal, values = ~(price),
-                title = "Price Range",
-                labFormat = labelFormat(prefix = "$"),
-                opacity = 1
-      )
+  output$stat <- renderDataTable({
+    a <- names(airbnb_se_1)
+    b <- matrix(a, ncol = 5)
+    b
   })
+  
+  output$stat1 <- renderDataTable({
+    head(airbnb_se_1)
+  })
+
   
   
   output$plot21 <- renderLeaflet({
@@ -364,8 +415,8 @@ server <- function(input, output,session) {
     ggplot(bedroom_se, aes(y=mean_price, x=bedrooms,fill=as.factor(bedrooms))) + 
       geom_bar(stat="identity", fill="pink") +
       scale_x_continuous(name ="Number of Bedrooms", breaks = seq(0, 50, by = 5)) +   
-      scale_y_continuous(name = "Mean price", breaks = seq(0, 1000, by = 200)) + theme_bw() + 
-      ggtitle("Price over different number of bedrooms") +
+      scale_y_continuous(name = "Mean price", breaks = seq(0, 1000, by = 200)) + theme_classic() + 
+      ggtitle("Figure 2. Price over different number of bedrooms") +
       theme(axis.title.x = element_text(face="bold",  size=12), 
             axis.title.y = element_text(face="bold",  size=12),
             plot.title = element_text(size=14, face="bold")) +
@@ -373,14 +424,70 @@ server <- function(input, output,session) {
   })
   
   output$plot4 <- renderPlot({
-    ggplot(airbnb_se_1, aes(x=beds, y=price)) + geom_point(color="pink") + 
-      geom_smooth(method = "lm", color="yellow") + theme_bw() + 
-      ggtitle("Price ~ beds")+  
+    ggplot(airbnb_se_1, aes(x=accommodates, y=price)) + geom_point(color="pink") + 
+      geom_smooth(method = "lm", color="green") + theme_bw() + 
+      ggtitle("Figure 3 ~ accommodates")+  
       theme(axis.title.x = element_text(face="bold",  size=12), 
             axis.title.y = element_text(face="bold",  size=12),
             plot.title = element_text(size=14, face="bold")) +
       theme(plot.title = element_text(hjust = 0.5))
   })
+  
+  output$pie<- renderPlotly({
+    
+    airbnb_se_3 <- airbnb_se_1 %>% filter(price > 0 & price <= 1000) %>% dplyr::select(room_type)
+    type_sea <- airbnb_se_3  %>% group_by(room_type) %>% 
+      summarise(n=n()) 
+    
+    colors <- c('pink', 'violet', 'salmon')
+    
+    plot_ly(type_sea,  labels = ~room_type, values = ~n, type = 'pie',  textposition = 'inside',
+            textinfo = 'label+percent',
+            hoverinfo = 'text',
+            marker = list(colors = colors,
+                          line = list(color = '#FFFFFF')),
+            showlegend = TRUE) %>%
+      layout(title = 'Figure 4 Room Type Proportion',
+             xaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE),
+             yaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE))
+    
+  })
+  
+  output$heat <- renderPlot({
+    
+    airbnb_se_nei <- airbnb_se_1 %>% filter(price > 0 & price <= 1000) %>% dplyr::select(room_type, price,neighbourhood)
+    nei_se <- airbnb_se_nei %>% group_by(room_type,neighbourhood) %>% 
+      summarise(mean_price = mean(price)) %>% arrange(desc(mean_price))
+    
+    
+    
+    ggplot(data = nei_se, mapping = aes(x = room_type,y =neighbourhood, fill = mean_price)) + 
+      geom_tile() + geom_text(aes(label = round(mean_price,0)), size=3)+ scale_fill_gradient(name = "Average Price",
+                                                                                             low = "ivory",
+                                                                                             high = "hotpink")  + xlab(label = "Room Type") + ylab(label = "Neighbourhood") +theme_classic()+ ggtitle("1. Neighbourhood ~ Room type")+ theme(axis.title.x = element_text(face="bold",  size=12), 
+                                                                                                                                                                                                                                             axis.title.y = element_text(face="bold",  size=12),
+                                                                                                                                                                                                                                             plot.title = element_text(size=14, face="bold")) +
+      theme(plot.title = element_text(hjust = 0.5))
+  })
+  
+  output$bar <- renderPlot({
+    
+    airbnb_se_2 <- airbnb_se_1 %>% filter(price > 0 & price <= 1000) %>% dplyr::select(room_type, price)
+    type_se <- airbnb_se_2  %>% group_by(room_type) %>% 
+      summarise(mean_price = mean(price)) %>% arrange(desc(mean_price))
+    ggplot(type_se, aes(y=mean_price, x=room_type, fill=room_type)) + 
+      geom_bar(stat="identity") + scale_fill_brewer(palette = "RdPu") +
+      scale_x_discrete(name ="Figure 5 Different Room Type") + 
+      scale_y_continuous(name="price($)", breaks = seq(0, 1000, by = 50)) + 
+      ggtitle("Price ~ Room type") + 
+      theme_bw() +
+      theme(axis.title.x = element_text(face="bold",  size=12), 
+            axis.title.y = element_text(face="bold",  size=12),
+            plot.title = element_text(size=14, face="bold"),  
+            axis.text.x  = element_text(vjust=0.5, size=10)) +
+      theme(plot.title = element_text(hjust = 0.5))
+  })
+  
   
 }
 
