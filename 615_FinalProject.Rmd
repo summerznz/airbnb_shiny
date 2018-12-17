@@ -6,7 +6,6 @@ output: html_document
 ---
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-knitr::opts_chunk$set(echo = TRUE,out.width="0.9\\linewidth",dev="png",fig.align  = 'center')
 pacman::p_load(ggplot2,knitr,arm,data.table,foreign,gridExtra,car,stringr,rstan,zoo)
 library(tidyverse)
 library(dplyr)
@@ -23,7 +22,6 @@ library(ggmap)
 library(leaflet)
 library(readr)
 library(boot)
-library(lme4)
 library(ggpubr)
 library(benford.analysis)
 library(BenfordTests)
@@ -36,15 +34,18 @@ library(BenfordTests)
 #airbnb_se$market <-NULL
 #airbnb_se <- cbind(airbnb_se,nei)
 #colnames(airbnb_se)[colnames(airbnb_se)=="se.neighbourhood_group_cleansed"] <- "neighbourhood"
-#airbnb_se_m <- airbnb_se %>% filter(price > 0 & price <= 1000) 
-airbnb_se_m <- read.csv("sea_airbnb.csv")
+airbnb_se <- read.csv("sea_airbnb.csv")
+airbnb_se_m <- airbnb_se %>% filter(price > 0 & price <= 1000) 
+
 ```
 
-##1. Abstract
-In this project, I will use benford's law to analysis the distribution of Airbnb listings' price in Seattle. 
+###Abstract
+In this project, I will use benford's law to analysis the distribution of Airbnb listings' price in Seattle and perform an exploratory data analysis figure out other features that are relevant to the rental price of Airbnb. 
 
 
-Figure 1 below shows the price distribution of Airbnb listings in Seattle. The plot displays a normal distribution but a little right skewness. 
+###Price Distribution & Benford's Law
+
+Figure 1 below shows the price distribution of Airbnb listings in Seattle. The plot displays a normal distribution but a little right skewness. It shows a high concentration of listing prices between 0 and 200 USD.
 
 ```{r echo=FALSE,message=FALSE}
     ggplot(airbnb_se_m, aes(price, fill = room_type)) + 
@@ -73,9 +74,10 @@ bf
 ```
 
 Next, I extract the observations with the largest discrpencies and plot the price  distribution. 
+
 ```{r}
 suspects <- getSuspects(bf, airbnb_se_m)
-suspects
+head(suspects)
 ```
 
 ```{r echo=FALSE,message=FALSE}
@@ -92,41 +94,166 @@ ggplot(suspects, aes(price, fill = room_type)) +
       theme(plot.title = element_text(hjust = 0.5)) 
 ```
 
+###Other Features
 
+There are many features that are relevant to the Airbnb rental price such as neighbourhood, number of bedrooms and number of accommodates. 
 
+##### Neighbourhood 
 
+Speaking of housing, most of the rental prices depend on the geographic feature. Houses in downtown are more expensive than those in suburb area. Further, the distance to shopping center or traffic station is also inneggligible if we try to list a fair rental price. 
 
+Leaflet mapping below shows the prices and names of different rental rooms in different neighbourhoods. 
 
+To give a better understanding of the price in different neighbourhoods, I plotted a heatmap (1) to show the average room prices in different neighbourhoods with different room types.  
 
+Next, from the heatmap(2), with the increase in the number of bedrooms, the average price of Airbnb listings in Seattle increase. Although it depends upon the neighbourhoods as well.
 
+```{r echo=FALSE,message=FALSE}
 
-
-
-
-```{r}
-    airbnb_se_map <- airbnb_se%>% filter(price > 0 & price <= 1000)
-    pal <- colorNumeric(
-      brewer.pal(11, "PiYG")[(4:1)],
-      domain = airbnb_se_map$price
-    )
-  
-    
-    leaflet(airbnb_se_map) %>% addTiles() %>%
-      addCircles(lng = ~longitude, lat = ~latitude, weight = 1,
-                 popup = ~price, radius = 80, 
-                 color = ~pal(price), fillOpacity = 1) %>%
-      addLegend("bottomright", pal = pal, values = ~(price),
-                title = "Price Range",
-                labFormat = labelFormat(prefix = "$"),
-                opacity = 1
+ getColor <- function(airbnb_se_m) {
+        sapply(airbnb_se_m$price, function(price) {
+          if(price >= 0 & price < 200) {
+            "beige"
+          } else if(price < 200 & price >= 500){
+            "lightpink"
+          } else if( price >= 500 & price < 1000){
+            "purple"
+          } 
+        })
+      }
+      icons <- awesomeIcons(
+        iconColor = 'white',
+        library = 'ion',
+        markerColor = getColor(airbnb_se_m)
       )
-    
-    
-    pal<- brewer.pal(11, "PiYG")[(4:1)]
 
+      popup_sb <- paste0("<strong>", airbnb_se_m$name, 
+                         "</strong><br />Price: ", airbnb_se_m$price)
+ 
+    leaflet(airbnb_se_m) %>% addTiles() %>%
+      addAwesomeMarkers(~longitude, ~latitude, popup = ~popup_sb,icon=icons, options = popupOptions(closeButton = FALSE))%>%  
+      addMeasure(
+        position = "bottomleft",
+        primaryLengthUnit = "meters",
+        primaryAreaUnit = "sqmeters",
+        activeColor = "#3D535D",
+        completedColor = "#7D4479") %>% addEasyButton(easyButton(
+          icon="fa-globe", title="Zoom to Level 1",
+          onClick=JS("function(btn, map){ map.setZoom(1); }"))) %>%
+      addEasyButton(easyButton(
+        icon="fa-crosshairs", title="Locate Me",
+        onClick=JS("function(btn, map){ map.locate({setView: true}); }")))
     
-     leaflet(airbnb_se_map) %>% addTiles() %>%
-addMarkers(
-  clusterOptions = markerClusterOptions())
 ```
+
+
+```{r  echo=FALSE,message=FALSE, warning=FALSE, fig.width=6, fig.height=4}
+airbnb_se_nei <- airbnb_se_m %>% filter(price > 0 & price <= 1000) %>% dplyr::select(room_type, price,neighbourhood)
+nei_se <- airbnb_se_nei %>% group_by(room_type,neighbourhood) %>% 
+  summarise(mean_price = mean(price)) %>% arrange(desc(mean_price))
+
+
+
+ggplot(data = nei_se, mapping = aes(x = room_type,y =neighbourhood, fill = mean_price)) + 
+  geom_tile() + geom_text(aes(label = round(mean_price,0)), size=3)+ scale_fill_gradient(name = "Average Price",
+                      low = "ivory",
+                      high = "hotpink")  + xlab(label = "Room Type") + ylab(label = "Neighbourhood") +theme_classic()+ ggtitle("1. Neighbourhood ~ Room type")+ theme(axis.title.x = element_text(face="bold",  size=12), 
+            axis.title.y = element_text(face="bold",  size=12),
+            plot.title = element_text(size=14, face="bold")) +
+      theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r echo=FALSE,message=FALSE, warning=FALSE, fig.width=6, fig.height=4}
+####3
+airbnb_se_be <- airbnb_se_m %>% filter(price > 0 & price <= 1000) %>% filter(bedrooms <= 10) %>% dplyr::select(bedrooms, price,neighbourhood)
+bed_se <- airbnb_se_be %>% group_by(bedrooms,neighbourhood) %>% 
+  summarise(mean_price = mean(price)) %>% arrange(desc(mean_price))
+
+ 
+ggplot(data = bed_se, mapping = aes(x = bedrooms, y =neighbourhood, fill = mean_price)) + 
+  geom_tile() + geom_text(aes(label = round(mean_price,0)), size=3)+ scale_fill_gradient(name = "Average Price",
+                      low = "ivory",
+                      high = "hotpink")  + xlab(label = "Number of bedroom") + ylab(label = "Neighbourhood") +theme_classic()+ ggtitle("2. Neighbourhood ~ Bedroom")+ theme(axis.title.x = element_text(face="bold",  size=12), 
+            axis.title.y = element_text(face="bold",  size=12),
+            plot.title = element_text(size=14, face="bold")) +
+      theme(plot.title = element_text(hjust = 0.5))
+```
+
+
+##### Number of Bedrooms
+
+Number of bedrooms will always be a major factor to the rental price of Airbnb. I made a barplot to show the average prices over different number of bedroom. In this case, we can see from Figure 2 that there is a certain relationship between the average price of Airbnb listings and number of bedrooms. 
+
+```{r echo=FALSE,message=FALSE}
+    airbnb_se_bed <- airbnb_se_m %>%  filter(bedrooms < 15)
+    bedroom_se <- airbnb_se_bed %>% dplyr::select(price, bedrooms)
+    bedroom_se <- bedroom_se %>% group_by(bedrooms) %>% summarise(mean_price = mean(price))
+    #barplot
+    ggplot(bedroom_se, aes(y=mean_price, x=bedrooms,fill=as.factor(bedrooms))) + 
+      geom_bar(stat="identity", fill="pink") +
+      scale_x_continuous(name ="Number of Bedrooms", breaks = seq(0, 50, by = 5)) +   
+      scale_y_continuous(name = "Mean price", breaks = seq(0, 1000, by = 200)) + theme_classic() + 
+      ggtitle("Figure 2. Price over different number of bedrooms") +
+      theme(axis.title.x = element_text(face="bold",  size=12), 
+            axis.title.y = element_text(face="bold",  size=12),
+            plot.title = element_text(size=14, face="bold")) +
+      theme(plot.title = element_text(hjust = 0.5))
+```
+
+##### Number of Accommodats
+
+We can see thatnumber of accommodates have a certain effect on the rental price of Airbnb listings. 
+
+```{r echo=FALSE,message=FALSE} 
+    ggplot(airbnb_se_m, aes(x=accommodates, y=price)) + geom_point(color="pink") + 
+      geom_smooth(method = "lm", color="yellow") + theme_classic() + 
+      ggtitle("Figure 3. Price over Number of Accommodates")+  
+      theme(axis.title.x = element_text(face="bold",  size=12), 
+            axis.title.y = element_text(face="bold",  size=12),
+            plot.title = element_text(size=14, face="bold")) +
+      theme(plot.title = element_text(hjust = 0.5))
+```
+
+##### Room Type
+
+In Airbnb listings, there are three types of room: Entire home/apt, Shared room and Private room. Room type is also a major factor of the price. Figure 4 shows the proportion of each of these three room type and we can see that there are nearly 74% of rooms are 'Entire Room/Apt'. Further, Figure 5 below shows that 'Entire room/apt' have a higher average price than 'Shared room' and 'Private room'. 
+
+```{r echo=FALSE,message=FALSE, warning=FALSE, fig.width=5, fig.height=3}
+#### pie chart ~ room type
+airbnb_se_3 <- airbnb_se_m %>% filter(price > 0 & price <= 1000) %>% dplyr::select(room_type)
+type_sea <- airbnb_se_3  %>% group_by(room_type) %>% 
+  summarise(n=n()) 
+
+colors <- c('pink', 'violet', 'salmon')
+
+plot_ly(type_sea,  labels = ~room_type, values = ~n, type = 'pie',  textposition = 'inside',
+        textinfo = 'label+percent',
+        hoverinfo = 'text',
+        marker = list(colors = colors,
+                      line = list(color = '#FFFFFF')),
+        showlegend = TRUE) %>%
+  layout(title = 'Figure 4 Room Type Proportion',
+         xaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE),
+         yaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE))
+```
+
+```{r echo=FALSE,message=FALSE, warning=FALSE, fig.width=5, fig.height=3}
+#####
+airbnb_se_2 <- airbnb_se_m %>% filter(price > 0 & price <= 1000) %>% dplyr::select(room_type, price)
+type_se <- airbnb_se_2  %>% group_by(room_type) %>% 
+  summarise(mean_price = mean(price)) %>% arrange(desc(mean_price))
+ggplot(type_se, aes(y=mean_price, x=room_type, fill=room_type)) + 
+      geom_bar(stat="identity") + scale_fill_brewer(palette = "RdPu") +
+      scale_x_discrete(name ="Different Room Type") + 
+      scale_y_continuous(name="price($)", breaks = seq(0, 1000, by = 50)) + 
+      ggtitle("Figure 5 Price ~ Room type") + 
+      theme_bw() +
+      theme(axis.title.x = element_text(face="bold",  size=12), 
+            axis.title.y = element_text(face="bold",  size=12),
+            plot.title = element_text(size=14, face="bold"),  
+            axis.text.x  = element_text(vjust=0.5, size=10)) +
+      theme(plot.title = element_text(hjust = 0.5))
+```
+
+
 
