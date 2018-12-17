@@ -1,0 +1,211 @@
+---
+title: "Airbnb Price Distribution in Seattle"
+author: "ningze zu"
+date: "12/17/2018"
+output:
+  slidy_presentation: default
+  ioslides_presentation: default
+  beamer_presentation: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+pacman::p_load(ggplot2,knitr,arm,data.table,foreign,gridExtra,car,stringr,rstan,zoo)
+library(tidyverse)
+library(dplyr)
+library(leaflet)
+library(RColorBrewer)
+library(corrplot)
+library(ggcorrplot)
+library(lattice)
+library(plotly)
+library(png)
+library(scales)
+library(graphics)
+library(ggmap)
+library(leaflet)
+library(readr)
+library(boot)
+library(ggpubr)
+library(benford.analysis)
+library(BenfordTests)
+#air <- read.csv("air.csv")
+#airbnb_se <- air %>% dplyr::filter(state == "WA")
+#airbnb_se$Area <- rep("Seattle",nrow(airbnb_se))
+#sea <- read.csv("sea.csv")
+#se <- sea %>% dplyr::filter(state == "WA")
+#nei <- data.frame(se$neighbourhood_group_cleansed)
+#airbnb_se$market <-NULL
+#airbnb_se <- cbind(airbnb_se,nei)
+#colnames(airbnb_se)[colnames(airbnb_se)=="se.neighbourhood_group_cleansed"] <- "neighbourhood"
+airbnb_se <- read.csv("sea_airbnb.csv")
+airbnb_se_m <- airbnb_se %>% filter(price > 0 & price <= 1000) 
+
+```
+
+## Abstract
+
+In this project, I will use benford's law to analysis the distribution of Airbnb listings' price in Seattle and perform an exploratory data analysis figure out other features that are relevant to the rental price of Airbnb.
+
+
+## Parts
+
+- Price Distribution Benford's Law
+- Benford's Law
+- Other Features
+
+
+## Airbnb Price Distribution 
+
+```{r echo=FALSE,message=FALSE}
+airbnb_se <- read.csv("sea_airbnb.csv")
+airbnb_se_m <- airbnb_se %>% filter(price > 0 & price <= 1000) 
+    ggplot(airbnb_se_m, aes(price, fill = room_type)) + 
+      geom_histogram(binwidth = 10) + theme_classic() +   
+      scale_fill_brewer(palette = "RdPu") + 
+      scale_x_continuous(breaks = seq(0, 1000, by = 200)) + 
+      xlab("\nPrice ($)") + ylab("Frequency of Price\n") + 
+      ggtitle("Figure 1. Airbnb Price Distribution \n  in Seattle ($0 ~$1000)") + 
+      theme(axis.title.x = element_text(face="bold",  size=14), 
+            axis.title.y = element_text(face="bold",  size=14),
+            plot.title = element_text(size=16, face="bold"),  
+            axis.text.x  = element_text(vjust=0.5, size=12)) +
+      theme(plot.title = element_text(hjust = 0.5)) 
+```
+
+## Benford's Law
+
+```{r echo=FALSE,message=FALSE}
+bf <- benford(airbnb_se_m$price)
+plot(bf)
+```
+
+## Benford's Law
+
+```{r echo=FALSE,message=FALSE}
+bf
+```
+
+
+## Get Suspects
+
+```{r}
+getSuspects(bf, airbnb_se_m)
+``` 
+
+
+## Other Features (Bedrooms)
+
+```{r  echo=FALSE,message=FALSE, warning=FALSE}
+##bedroom ~ price 
+airbnb_se_bed <- airbnb_se_m %>% filter(price > 0 & price <= 1000) %>% 
+  filter(bedrooms < 15)
+bedroom_se <- airbnb_se_bed %>% dplyr::select(price, bedrooms)
+bedroom_se <- bedroom_se %>% group_by(bedrooms) %>% summarise(mean_price = mean(price))
+#barplot
+ggplot(bedroom_se, aes(y=mean_price, x=bedrooms,fill=as.factor(bedrooms))) + 
+      geom_bar(stat="identity", fill="pink") +
+      scale_x_continuous(name ="Number of Bedrooms", breaks = seq(0, 50, by = 5)) +   
+      scale_y_continuous(name = "Mean price", breaks = seq(0, 1000, by = 200)) + theme_bw() + 
+      ggtitle("Figure 2 Price over different number of bedrooms") +
+      theme(axis.title.x = element_text(face="bold",  size=12), 
+            axis.title.y = element_text(face="bold",  size=12),
+            plot.title = element_text(size=14, face="bold")) +
+      theme(plot.title = element_text(hjust = 0.5))
+```
+
+
+## Other Features (Accommodates)
+
+```{r echo=FALSE,message=FALSE} 
+ ggplot(airbnb_se_m, aes(x=accommodates, y=price)) + geom_point(color="pink") + 
+      geom_smooth(method = "lm", color="green") + theme_bw() + 
+      ggtitle("Figure 3 ~ accommodates")+  
+      theme(axis.title.x = element_text(face="bold",  size=12), 
+            axis.title.y = element_text(face="bold",  size=12),
+            plot.title = element_text(size=14, face="bold")) +
+      theme(plot.title = element_text(hjust = 0.5))
+```
+
+## Other Features (Room Type)
+
+```{r echo=FALSE,message=FALSE, warning=FALSE}
+#### pie chart ~ room type
+airbnb_se_3 <- airbnb_se_m %>% filter(price > 0 & price <= 1000) %>% dplyr::select(room_type)
+type_sea <- airbnb_se_3  %>% group_by(room_type) %>% 
+  summarise(n=n()) 
+
+colors <- c('pink', 'violet', 'salmon')
+
+plot_ly(type_sea,  labels = ~room_type, values = ~n, type = 'pie',  textposition = 'inside',
+        textinfo = 'label+percent',
+        hoverinfo = 'text',
+        marker = list(colors = colors,
+                      line = list(color = '#FFFFFF')),
+        showlegend = TRUE) %>%
+  layout(title = 'Figure 4 Room Type Proportion',
+         xaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE),
+         yaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE))
+```
+
+## Other Features (Room Type)
+
+```{r echo=FALSE,message=FALSE, warning=FALSE}
+#####
+airbnb_se_2 <- airbnb_se_m %>% filter(price > 0 & price <= 1000) %>% dplyr::select(room_type, price)
+type_se <- airbnb_se_2  %>% group_by(room_type) %>% 
+  summarise(mean_price = mean(price)) %>% arrange(desc(mean_price))
+ggplot(type_se, aes(y=mean_price, x=room_type, fill=room_type)) + 
+      geom_bar(stat="identity") + scale_fill_brewer(palette = "RdPu") +
+      scale_x_discrete(name ="Different Room Type") + 
+      scale_y_continuous(name="price($)", breaks = seq(0, 1000, by = 50)) + 
+      ggtitle("Figure 5 Price ~ Room type") + 
+      theme_bw() +
+      theme(axis.title.x = element_text(face="bold",  size=12), 
+            axis.title.y = element_text(face="bold",  size=12),
+            plot.title = element_text(size=14, face="bold"),  
+            axis.text.x  = element_text(vjust=0.5, size=10)) +
+      theme(plot.title = element_text(hjust = 0.5))
+```
+
+
+
+## Other Features (Neighbourhoods)
+
+```{r  echo=FALSE,message=FALSE, warning=FALSE, fig.width=6, fig.height=4}
+airbnb_se_nei <- airbnb_se_m %>% filter(price > 0 & price <= 1000) %>% dplyr::select(room_type, price,neighbourhood)
+nei_se <- airbnb_se_nei %>% group_by(room_type,neighbourhood) %>% 
+  summarise(mean_price = mean(price)) %>% arrange(desc(mean_price))
+
+
+
+ggplot(data = nei_se, mapping = aes(x = room_type,y =neighbourhood, fill = mean_price)) + 
+  geom_tile() + geom_text(aes(label = round(mean_price,0)), size=3)+ scale_fill_gradient(name = "Average Price",
+                      low = "ivory",
+                      high = "hotpink")  + xlab(label = "Room Type") + ylab(label = "Neighbourhood") +theme_classic()+ ggtitle("1. Neighbourhood ~ Room type")+ theme(axis.title.x = element_text(face="bold",  size=12), 
+            axis.title.y = element_text(face="bold",  size=12),
+            plot.title = element_text(size=14, face="bold")) +
+      theme(plot.title = element_text(hjust = 0.5))
+```
+
+
+## Other Features (Neighbourhoods)
+
+```{r echo=FALSE,message=FALSE, warning=FALSE, fig.width=6, fig.height=4}
+####3
+airbnb_se_be <- airbnb_se_m %>% filter(price > 0 & price <= 1000) %>% filter(bedrooms <= 10) %>% dplyr::select(bedrooms, price,neighbourhood)
+bed_se <- airbnb_se_be %>% group_by(bedrooms,neighbourhood) %>% 
+  summarise(mean_price = mean(price)) %>% arrange(desc(mean_price))
+
+ 
+ggplot(data = bed_se, mapping = aes(x = bedrooms, y =neighbourhood, fill = mean_price)) + 
+  geom_tile() + geom_text(aes(label = round(mean_price,0)), size=3)+ scale_fill_gradient(name = "Average Price",
+                      low = "ivory",
+                      high = "hotpink")  + xlab(label = "Number of bedroom") + ylab(label = "Neighbourhood") +theme_classic()+ ggtitle("2. Neighbourhood ~ Bedroom")+ theme(axis.title.x = element_text(face="bold",  size=12), 
+            axis.title.y = element_text(face="bold",  size=12),
+            plot.title = element_text(size=14, face="bold")) +
+      theme(plot.title = element_text(hjust = 0.5))
+```
+
+
+
